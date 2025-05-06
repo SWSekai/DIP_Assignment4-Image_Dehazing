@@ -9,9 +9,10 @@ def DarkChannel(img, size):
         計算影像的 Dark Channel
     """
     b, g, r = cv.split(img)
-    dc = cv.min(cv.min(r, g), b)
+    dc = cv.min(cv.min(r, g), b) 
     kernel = cv.getStructuringElement(cv.MORPH_RECT, (size, size))
     darkC = cv.erode(dc, kernel)
+    
     return darkC
 
 def AtmLight(img, dark):
@@ -67,6 +68,7 @@ def Guidedfilter(img, p, ksize, eps):
     mean_b = cv.boxFilter(b, cv.CV_64F, (ksize, ksize))
 
     q = mean_a * img + mean_b
+    
     return q
 
 
@@ -100,7 +102,7 @@ if __name__ == '__main__':
     input_image_path = './input_image/'
     output_image_path = './output_image/'
     tmp_path = './tmp/'
-    fn = 'hazy09.jpg'
+    fn = 'hazy08.jpg'
     src = cv.imread(input_image_path + fn)
 
     I = src.astype('float64') / 255
@@ -119,7 +121,7 @@ if __name__ == '__main__':
     psnr = PSNR(I, DeHazeImg)
     ssim = SSIM(I, DeHazeImg, data_range = I.max() - I.min(), win_size = 3, multichannel = True)
 
-    print(f'psnr={psnr}, ssim={ssim}')
+    print(f'psnr = {psnr}, ssim = {ssim}')
     
     window_width = 800
     window_height = window_width * dark.shape[0] // dark.shape[1]
@@ -141,7 +143,7 @@ if __name__ == '__main__':
     cv.resizeWindow('teMap', window_width, window_height)
     cv.resizeWindow('RefineMap', window_width, window_height)
     cv.resizeWindow('DeHazeImg', window_width, window_height)
-    
+
     cv.imwrite(tmp_path + 'drak'+ fn, dark)
     cv.imwrite(tmp_path + 'teMap' + fn, teMap)
     cv.imwrite(tmp_path + 'reMap' + fn, RefineMap)
