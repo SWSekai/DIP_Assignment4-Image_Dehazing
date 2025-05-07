@@ -97,56 +97,80 @@ def Recover(img, tMap, A, t0=0.1):
 
     return res
 
+def simple_white_balance(img):
+    """
+    執行簡單的平均灰度白平衡。
+
+    Args:
+        img: 輸入的彩色影像 (BGR 格式)。
+
+    Returns:
+        白平衡後的影像。
+    """
+
+    avg_b = np.mean(img[:, :, 0])
+    avg_g = np.mean(img[:, :, 1])
+    avg_r = np.mean(img[:, :, 2])
+    avg_gray = (avg_b + avg_g + avg_r) / 3
+
+    img_balanced = img.copy()
+    img_balanced[:, :, 0] = np.clip(img[:, :, 0] * avg_gray / avg_b, 0, 255)
+    img_balanced[:, :, 1] = np.clip(img[:, :, 1] * avg_gray / avg_g, 0, 255)
+    img_balanced[:, :, 2] = np.clip(img[:, :, 2] * avg_gray / avg_r, 0, 255)
+
+    return img_balanced.astype(np.uint8) # 將影像轉換回 uint8 格式
 
 if __name__ == '__main__':
     input_image_path = './input_image/'
-    output_image_path = './output_image/'
-    tmp_path = './tmp/'
-    fn = 'hazy08.jpg'
-    src = cv.imread(input_image_path + fn)
+    output_image_path = './improved_output_image/'
+    tmp_path = './improved_tmp/'
+    for i in range(1, 10):
+        fn = 'hazy0'+ str(i) + '.jpg'
+        src = cv.imread(input_image_path + fn)
 
-    I = src.astype('float64') / 255
-    dark = DarkChannel(I, 15)
-    A = AtmLight(I, dark)
-    teMap = TransmissionEstimate(I, A, 15)
-    RefineMap = TransmissionRefine(src, teMap)
-    DeHazeImg = Recover(I, RefineMap, A, 0.1)
+        I = src.astype('float64') / 255
+        dark = DarkChannel(I, 15)
+        A = AtmLight(I, dark)
+        teMap = TransmissionEstimate(I, A, 15)
+        RefineMap = TransmissionRefine(src, teMap)
+        DeHazeImg = Recover(I, RefineMap, A, 0.1)
 
-    I = (I * 255).astype('uint8')
-    dark = (dark * 255).astype('uint8')
-    teMap = (teMap * 255).astype('uint8')
-    RefineMap = (RefineMap * 255).astype('uint8')
-    DeHazeImg = (DeHazeImg * 255).astype('uint8')
+        I = (I * 255).astype('uint8')
+        dark = (dark * 255).astype('uint8')
+        teMap = (teMap * 255).astype('uint8')
+        RefineMap = (RefineMap * 255).astype('uint8')
+        DeHazeImg = (DeHazeImg * 255).astype('uint8')
+        DeHazeImg_balanced = simple_white_balance(DeHazeImg)
 
-    psnr = PSNR(I, DeHazeImg)
-    ssim = SSIM(I, DeHazeImg, data_range = I.max() - I.min(), win_size = 3, multichannel = True)
+        psnr = PSNR(I, DeHazeImg)
+        ssim = SSIM(I, DeHazeImg, data_range = I.max() - I.min(), win_size = 3, multichannel = True)
 
-    print(f'psnr = {psnr}, ssim = {ssim}')
-    
-    window_width = 800
-    window_height = window_width * dark.shape[0] // dark.shape[1]
+        print(f'psnr = {psnr}, ssim = {ssim}')
+        
+        window_width = 800
+        window_height = window_width * dark.shape[0] // dark.shape[1]
 
-    cv.namedWindow('Source image', cv.WINDOW_NORMAL)
-    cv.namedWindow('dark', cv.WINDOW_NORMAL)
-    cv.namedWindow('teMap', cv.WINDOW_NORMAL)
-    cv.namedWindow('RefineMap', cv.WINDOW_NORMAL)
-    cv.namedWindow('DeHazeImg', cv.WINDOW_NORMAL)
-    
-    cv.imshow('Source image', src)
-    cv.imshow('dark', dark)
-    cv.imshow("teMap", teMap)
-    cv.imshow("RefineMap", RefineMap)
-    cv.imshow('DeHazeImg', DeHazeImg)
+        # cv.namedWindow('Source image', cv.WINDOW_NORMAL)
+        # cv.namedWindow('dark', cv.WINDOW_NORMAL)
+        # cv.namedWindow('teMap', cv.WINDOW_NORMAL)
+        # cv.namedWindow('RefineMap', cv.WINDOW_NORMAL)
+        # cv.namedWindow('DeHazeImg', cv.WINDOW_NORMAL)
+        
+        # cv.imshow('Source image', src)
+        # cv.imshow('dark', dark)
+        # cv.imshow("teMap", teMap)
+        # cv.imshow("RefineMap", RefineMap)
+        # cv.imshow('DeHazeImg', DeHazeImg_balanced)
 
-    cv.resizeWindow('Source image', window_width, window_height)
-    cv.resizeWindow('dark', window_width, window_height)
-    cv.resizeWindow('teMap', window_width, window_height)
-    cv.resizeWindow('RefineMap', window_width, window_height)
-    cv.resizeWindow('DeHazeImg', window_width, window_height)
+        # cv.resizeWindow('Source image', window_width, window_height)
+        # cv.resizeWindow('dark', window_width, window_height)
+        # cv.resizeWindow('teMap', window_width, window_height)
+        # cv.resizeWindow('RefineMap', window_width, window_height)
+        # cv.resizeWindow('DeHazeImg', window_width, window_height)
 
-    cv.imwrite(tmp_path + 'drak'+ fn, dark)
-    cv.imwrite(tmp_path + 'teMap' + fn, teMap)
-    cv.imwrite(tmp_path + 'reMap' + fn, RefineMap)
-    cv.imwrite(output_image_path + fn, DeHazeImg)
+        cv.imwrite(tmp_path + 'drak'+ fn, dark)
+        cv.imwrite(tmp_path + 'teMap' + fn, teMap)
+        cv.imwrite(tmp_path + 'reMap' + fn, RefineMap)
+        cv.imwrite(output_image_path + fn, DeHazeImg_balanced)
 
-    cv.waitKey()
+        cv.waitKey()
