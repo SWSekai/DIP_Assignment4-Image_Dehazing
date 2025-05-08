@@ -1,8 +1,37 @@
 import cv2 as cv
 import numpy as np
 import math
+
 from skimage.metrics import peak_signal_noise_ratio as PSNR
 from skimage.metrics import structural_similarity as SSIM
+
+def multi_scale_retinex(img, scales, weights):
+    """
+        多尺度 Retinex 演算法
+    """
+    img_log = np.log1p(img.astype(np.float32)) 
+
+    msr = np.zeros_like(img, dtype=np.float32)
+
+    for i, scale in enumerate(scales):
+        # 將 scale 轉為正奇數
+        ksize = int(scale)
+        if ksize % 2 == 0:
+            ksize += 1
+        if ksize <= 0:
+            ksize = 1
+
+        img_blur = cv.GaussianBlur(img_log, (ksize, ksize), 0)
+
+        retinex = img_log - np.log1p(img_blur)
+
+        # 加權累加結果
+        msr += weights[i] * retinex
+
+    # 正規化結果
+    msr = cv.normalize(msr, None, 0, 255, cv.NORM_MINMAX, dtype=cv.CV_8U)
+
+    return msr
 
 def DarkChannel(img, size):
     """
@@ -33,6 +62,7 @@ def AtmLight(img, dark):
         atmsum = atmsum + imvec[indices[ind]]
 
     A = atmsum / numpx
+    
     return A
 
 def TransmissionEstimate(img, A, size):
@@ -43,11 +73,11 @@ def TransmissionEstimate(img, A, size):
     img3 = np.empty(img.shape, img.dtype)
 
     for ind in range(0, 3):
-        img3[:, :, ind] = img[:, :, ind] / A[0, ind]
+        img3[:, :, ind] = img[:, :, ind] / A[0, ind] # 將影像除以大氣光照明強度 
 
     transmission = 1 - omega * DarkChannel(img3, size)
+    
     return transmission
-
 
 def Guidedfilter(img, p, ksize, eps):
     """
@@ -71,7 +101,6 @@ def Guidedfilter(img, p, ksize, eps):
     
     return q
 
-
 def TransmissionRefine(img, teMap):
     """
         細化 transmission map(透射率圖)
@@ -93,19 +122,13 @@ def Recover(img, tMap, A, t0=0.1):
     tMap = cv.max(tMap, t0)
 
     for ind in range(0, 3):
-        res[:, :, ind] = (img[:, :, ind] - A[0, ind]) / tMap + A[0, ind]
+        res[:, :, ind] = (img[:, :, ind] - A[0, ind]) / tMap + A[0, ind] # 將影像除以大氣光照明強度
 
     return res
 
-def simple_white_balance(img):
+def white_balance(img):
     """
-    執行簡單的平均灰度白平衡。
-
-    Args:
-        img: 輸入的彩色影像 (BGR 格式)。
-
-    Returns:
-        白平衡後的影像。
+        白平衡
     """
 
     avg_b = np.mean(img[:, :, 0])
@@ -120,15 +143,50 @@ def simple_white_balance(img):
 
     return img_balanced.astype(np.uint8) # 將影像轉換回 uint8 格式
 
+# 調整亮度
+
+def increase_brightness_hsv(img, factor=1.2):
+    """
+        使用 HSV 模式調整亮度
+    """
+    hsv = cv.cvtColor(img, cv.COLOR_BGR2HSV)
+    h, s, v = cv.split(hsv)
+
+    v = np.clip(v.astype(np.float32) * factor, 0, 255).astype(np.uint8)
+    hsv = cv.merge((h, s, v))
+
+    return cv.cvtColor(hsv, cv.COLOR_HSV2BGR)
+
+# def apply_clahe(img):
+#     """
+#         對影像亮度通道使用 CLAHE 增亮
+#     """
+#     lab = cv.cvtColor(img, cv.COLOR_BGR2LAB)
+#     l, a, b = cv.split(lab)
+
+#     clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+#     l = clahe.apply(l)
+
+#     lab = cv.merge((l, a, b))
+#     return cv.cvtColor(lab, cv.COLOR_LAB2BGR)
+
 if __name__ == '__main__':
     input_image_path = './input_image/'
-    output_image_path = './improved_output_image/'
-    tmp_path = './improved_tmp/'
+    output_image_path = './output_image/'
+    tmp_path = './tmp/'
+    
     for i in range(1, 10):
         fn = 'hazy0'+ str(i) + '.jpg'
         src = cv.imread(input_image_path + fn)
 
-        I = src.astype('float64') / 255
+        # 設定 MSR 參數
+        scales = [15, 80, 250]  # 高斯濾波器大小
+        weights = [1/3, 1/3, 1/3]  # 尺度權重
+        
+        # 應用 MSR
+        dehazed_img_msr = multi_scale_retinex(src.astype(np.float32), scales, weights)
+        
+        I = dehazed_img_msr.astype('float64') / 255
         dark = DarkChannel(I, 15)
         A = AtmLight(I, dark)
         teMap = TransmissionEstimate(I, A, 15)
@@ -140,37 +198,16 @@ if __name__ == '__main__':
         teMap = (teMap * 255).astype('uint8')
         RefineMap = (RefineMap * 255).astype('uint8')
         DeHazeImg = (DeHazeImg * 255).astype('uint8')
-        DeHazeImg_balanced = simple_white_balance(DeHazeImg)
-
-        psnr = PSNR(I, DeHazeImg)
-        ssim = SSIM(I, DeHazeImg, data_range = I.max() - I.min(), win_size = 3, multichannel = True)
-
-        print(f'psnr = {psnr}, ssim = {ssim}')
-        
-        window_width = 800
-        window_height = window_width * dark.shape[0] // dark.shape[1]
-
-        # cv.namedWindow('Source image', cv.WINDOW_NORMAL)
-        # cv.namedWindow('dark', cv.WINDOW_NORMAL)
-        # cv.namedWindow('teMap', cv.WINDOW_NORMAL)
-        # cv.namedWindow('RefineMap', cv.WINDOW_NORMAL)
-        # cv.namedWindow('DeHazeImg', cv.WINDOW_NORMAL)
-        
-        # cv.imshow('Source image', src)
-        # cv.imshow('dark', dark)
-        # cv.imshow("teMap", teMap)
-        # cv.imshow("RefineMap", RefineMap)
-        # cv.imshow('DeHazeImg', DeHazeImg_balanced)
-
-        # cv.resizeWindow('Source image', window_width, window_height)
-        # cv.resizeWindow('dark', window_width, window_height)
-        # cv.resizeWindow('teMap', window_width, window_height)
-        # cv.resizeWindow('RefineMap', window_width, window_height)
-        # cv.resizeWindow('DeHazeImg', window_width, window_height)
+        DeHazeImg = white_balance(DeHazeImg)
+        # DeHazeImg = color_correction_lab(DeHazeImg)
+        DeHazeImg = increase_brightness_hsv(DeHazeImg, 1.2)
+        # DeHazeImg = apply_clahe(DeHazeImg)
 
         cv.imwrite(tmp_path + 'drak'+ fn, dark)
         cv.imwrite(tmp_path + 'teMap' + fn, teMap)
         cv.imwrite(tmp_path + 'reMap' + fn, RefineMap)
-        cv.imwrite(output_image_path + fn, DeHazeImg_balanced)
+        cv.imwrite(output_image_path + fn, DeHazeImg)
 
+        print("第" + str(i) + "張影像處理完成")
+        
         cv.waitKey()
