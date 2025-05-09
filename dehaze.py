@@ -143,6 +143,32 @@ def white_balance(img):
 
     return img_balanced.astype(np.uint8) # 將影像轉換回 uint8 格式
 
+def color_correction_lab(img):
+    """
+        使用 Lab 色彩空間進行顏色校正
+    """
+    lab = cv.cvtColor(img, cv.COLOR_BGR2Lab)
+    l, a, b = cv.split(lab)
+
+    # 計算平均值
+    l_mean = np.mean(l)
+    a_mean = np.mean(a)
+    b_mean = np.mean(b)
+
+    # 計算增益
+    l_gain = 100 / l_mean
+    a_gain = 128 / a_mean
+    b_gain = 128 / b_mean
+
+    # 調整顏色
+    l = np.clip(l * l_gain, 0, 255).astype(np.uint8)
+    a = np.clip(a * a_gain, 0, 255).astype(np.uint8)
+    b = np.clip(b * b_gain, 0, 255).astype(np.uint8)
+
+    lab_corrected = cv.merge((l, a, b))
+    
+    return cv.cvtColor(lab_corrected, cv.COLOR_Lab2BGR)
+
 # 調整亮度
 
 def increase_brightness_hsv(img, factor=1.2):
@@ -157,18 +183,18 @@ def increase_brightness_hsv(img, factor=1.2):
 
     return cv.cvtColor(hsv, cv.COLOR_HSV2BGR)
 
-# def apply_clahe(img):
-#     """
-#         對影像亮度通道使用 CLAHE 增亮
-#     """
-#     lab = cv.cvtColor(img, cv.COLOR_BGR2LAB)
-#     l, a, b = cv.split(lab)
+def apply_clahe(img):
+    """
+        對影像亮度通道使用 CLAHE 增亮
+    """
+    lab = cv.cvtColor(img, cv.COLOR_BGR2LAB)
+    l, a, b = cv.split(lab)
 
-#     clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-#     l = clahe.apply(l)
+    clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
 
-#     lab = cv.merge((l, a, b))
-#     return cv.cvtColor(lab, cv.COLOR_LAB2BGR)
+    lab = cv.merge((l, a, b))
+    return cv.cvtColor(lab, cv.COLOR_LAB2BGR)
 
 if __name__ == '__main__':
     input_image_path = './input_image/'
@@ -199,9 +225,9 @@ if __name__ == '__main__':
         RefineMap = (RefineMap * 255).astype('uint8')
         DeHazeImg = (DeHazeImg * 255).astype('uint8')
         DeHazeImg = white_balance(DeHazeImg)
-        # DeHazeImg = color_correction_lab(DeHazeImg)
+        DeHazeImg = color_correction_lab(DeHazeImg)
         DeHazeImg = increase_brightness_hsv(DeHazeImg, 1.2)
-        # DeHazeImg = apply_clahe(DeHazeImg)
+        DeHazeImg = apply_clahe(DeHazeImg)
 
         cv.imwrite(tmp_path + 'drak'+ fn, dark)
         cv.imwrite(tmp_path + 'teMap' + fn, teMap)
